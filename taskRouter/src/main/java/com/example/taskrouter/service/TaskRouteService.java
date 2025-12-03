@@ -44,7 +44,30 @@ public class TaskRouteService {
         String traceId = UUID.randomUUID().toString();
 
         String normalizedChannel = normalize(req.getChannel());
-        enforceSupportedChannel(normalizedChannel);
+        String channelError = validateSupportedChannel(normalizedChannel);
+        if (channelError != null) {
+            loggingService.sendLog("task-router", traceId, "VALIDATION_FAILED",
+                    Map.of("error", channelError), normalizedChannel != null ? normalizedChannel : "unknown", 
+                    req.getTo() != null ? req.getTo() : "", null, "failure");
+            return TaskRouteResponse.builder()
+                    .status("VALIDATION_FAILED")
+                    .traceId(traceId)
+                    .details(channelError)
+                    .duplicate(false)
+                    .build();
+        }
+
+        String recipientError = validateRecipient(normalizedChannel, req.getTo());
+        if (recipientError != null) {
+            loggingService.sendLog("task-router", traceId, "VALIDATION_FAILED",
+                    Map.of("error", recipientError), normalizedChannel, req.getTo(), null, "failure");
+            return TaskRouteResponse.builder()
+                    .status("VALIDATION_FAILED")
+                    .traceId(traceId)
+                    .details(recipientError)
+                    .duplicate(false)
+                    .build();
+        }
 
         String uniqueMessageSignature = buildMessageSignature(normalizedChannel, req.getTo(), req.getBody());
         if (repo.existsByUniqueBody(uniqueMessageSignature)) {
@@ -123,10 +146,11 @@ public class TaskRouteService {
         return false;
     }
 
-    private void enforceSupportedChannel(String channel) {
+    private String validateSupportedChannel(String channel) {
         if (!CHANNEL_TO_SERVICE.containsKey(channel)) {
-            throw new IllegalArgumentException("Unsupported channel: " + channel);
+            return "Unsupported channel: " + channel;
         }
+        return null;
     }
 
     private String normalize(String channel) {
@@ -154,5 +178,42 @@ public class TaskRouteService {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("Unable to hash message for duplicate detection", e);
         }
+    }
+
+    private String validateRecipient(String channel, String recipient) {
+        if (recipient == null || recipient.trim().isEmpty()) {
+            return "Recipient 'to' field is required";
+        }
+
+        String trimmedRecipient = recipient.trim();
+
+        if ("email".equals(channel)) {
+            if (!isValidEmail(trimmedRecipient)) {
+                return "For email channel, 'to' must be a valid email address";
+            }
+        } else if ("sms".equals(channel) || "whatsapp".equals(channel)) {
+            if (!isValidPhoneNumber(trimmedRecipient)) {
+                return "For " + channel + " channel, 'to' must be a 10-digit phone number";
+            }
+        }
+        return null;
+    }
+
+    private boolean isValidEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            return false;
+        }
+        // Basic email regex pattern
+        String emailPattern = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$";
+        return email.matches(emailPattern);
+    }
+
+    private boolean isValidPhoneNumber(String phone) {
+        if (phone == null || phone.isEmpty()) {
+            return false;
+        }
+        // Must be exactly 10 digits
+        String phonePattern = "^\\d{10}$";
+        return phone.matches(phonePattern);
     }
 }
