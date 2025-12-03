@@ -1,0 +1,28 @@
+server:
+  port: 8090
+
+#spring:
+#  data:
+#    mongodb:
+#      uri: mongodb://localhost:27017/delivery_db
+#
+#rabbitmq:
+#  exchange:
+#    message: message.exchange
+#    logs: logs.exchange
+
+
+spring:
+  application:
+    name: delivery-service
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017
+      database: taskRouteApplication
+
+rabbitmq:
+  host: localhost
+  port: 5672
+  exchange:
+    message: message.exchange
+    logs: logs.exchange
