@@ -17,8 +17,7 @@ spring:
     name: delivery-service
   data:
     mongodb:
-      uri: mongodb://localhost:27017
-      database: taskRouteApplication
+      uri: mongodb://localhost:27017/taskRouteApplication
 
 rabbitmq:
   host: localhost
