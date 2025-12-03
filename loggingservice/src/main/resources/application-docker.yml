@@ -5,4 +5,13 @@ spring:
     password: password
     connection-timeout: 5s
     socket-timeout: 60s
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: guest
+    password: guest
+
+elasticsearch:
+  index:
+    name: logs
 

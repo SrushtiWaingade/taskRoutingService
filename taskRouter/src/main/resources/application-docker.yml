@@ -5,4 +5,16 @@ spring:
   rabbitmq:
     host: rabbitmq
     port: 5672
+    username: guest
+    password: guest
+
+rabbitmq:
+  exchange:
+    message: message.exchange
+    logs: logs.exchange
+
+router:
+  publish-retry:
+    attempts: 3
+    backoff-ms: 500
 
