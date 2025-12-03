@@ -1,0 +1,8 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/taskRouteApplication
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+
