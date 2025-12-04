@@ -16,17 +16,17 @@ public class ElasticsearchConfig extends ElasticsearchConfiguration {
     @Value("${spring.elasticsearch.uris}")
     private String elasticsearchUris;
 
-    @Value("${spring.elasticsearch.username}")
-    private String username;
-
-    @Value("${spring.elasticsearch.password}")
-    private String password;
+//    @Value("${spring.elasticsearch.username}")
+//    private String username;
+//
+//    @Value("${spring.elasticsearch.password}")
+//    private String password;
 
     @Value("${spring.elasticsearch.connection-timeout:5s}")
-    private String connectionTimeout;
+    private Duration connectionTimeout;
 
     @Value("${spring.elasticsearch.socket-timeout:60s}")
-    private String socketTimeout;
+    private Duration socketTimeout;
 
     @Value("${elasticsearch.index.name:logs}")
     private String indexName;
@@ -38,15 +38,15 @@ public class ElasticsearchConfig extends ElasticsearchConfiguration {
 
     @Override
     public ClientConfiguration clientConfiguration() {
-        String[] uriParts = elasticsearchUris.replace("http://", "").replace("https://", "").split(":");
+        String[] uriParts = elasticsearchUris.replace("http://", "").split(":");
         String host = uriParts[0];
         int port = uriParts.length > 1 ? Integer.parseInt(uriParts[1]) : 9200;
 
         return ClientConfiguration.builder()
-                .connectedTo(host + ":" + port)
-                .withBasicAuth(username, password)
-                .withConnectTimeout(Duration.parse("PT" + connectionTimeout))
-                .withSocketTimeout(Duration.parse("PT" + socketTimeout))
+                .connectedTo(host+":"+port)
+//                .withBasicAuth(username, password)
+                .withConnectTimeout(connectionTimeout)
+                .withSocketTimeout(socketTimeout)
                 .build();
     }
 }

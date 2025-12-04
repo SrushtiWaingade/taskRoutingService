@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -10,51 +8,74 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   mongo:
     image: mongo:7
     container_name: mongo
+    command: mongod --bind_ip_all
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: elasticsearch
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - xpack.security.transport.ssl.enabled=false
-      - ELASTIC_USERNAME=elastic
-      - ELASTIC_PASSWORD=password
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
       - "9200:9200"
       - "9300:9300"
     volumes:
       - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.15.0
     container_name: kibana
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     environment:
       ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
       XPACK_SECURITY_ENABLED: "false"
     ports:
       - "5601:5601"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
 
   taskrouter:
     build:
       context: ./taskRouter
     container_name: taskrouter
     depends_on:
-      - rabbitmq
-      - mongo
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
     environment:
-      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/taskRouteApplication
+      SPRING_PROFILES_ACTIVE: docker
+#      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/taskRouteApplication
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
       SPRING_RABBITMQ_USERNAME: guest
@@ -67,9 +88,12 @@ services:
       context: ./delivery
     container_name: delivery
     depends_on:
-      - rabbitmq
-      - mongo
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
     environment:
+      SPRING_PROFILES_ACTIVE: docker
       SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/taskRouteApplication
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
@@ -83,12 +107,13 @@ services:
       context: ./loggingservice
     container_name: loggingservice
     depends_on:
-      - rabbitmq
-      - elasticsearch
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     environment:
+      SPRING_PROFILES_ACTIVE: docker
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
-      SPRING_ELASTICSEARCH_USERNAME: elastic
-      SPRING_ELASTICSEARCH_PASSWORD: password
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
       SPRING_RABBITMQ_USERNAME: guest
