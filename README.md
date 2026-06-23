@@ -1,78 +1,93 @@
-## Task Routing System – Microservices
+# Task Routing System
 
-This repository contains three Spring Boot microservices plus supporting infrastructure (MongoDB, RabbitMQ, Elasticsearch, Kibana). Together they form a complete pipeline for routing messages, delivering them, and centralizing logs.
+A production-style microservices pipeline that accepts messages, routes them to the right delivery channel (email/SMS/WhatsApp), detects duplicates, and centralises logs — all wired together with RabbitMQ, MongoDB, Elasticsearch, and Kibana.
 
-### Architecture Overview
+> Built to demonstrate real-world patterns: async communication, deduplication, observability, and containerised deployment.
 
-- **Task Router (`taskRouter`)**
-  - Accepts incoming message requests (to, channel, body) via REST.
-  - Hashes payloads and checks MongoDB for duplicates.
-  - Stores accepted messages in MongoDB (`taskRouteApplication` database).
-  - Routes messages to RabbitMQ queues (`email-queue`, `sms-queue`, `whatsapp-queue`).
-  - Publishes log events to a logs exchange/queue.
+---
 
-- **Delivery Service (`delivery`)**
-  - Listens to the per-channel queues from RabbitMQ.
-  - Simulates delivery (e.g., email/SMS/WhatsApp) and persists records to MongoDB.
-  - Publishes delivery logs back to the logging pipeline.
+## What It Does
 
-- **Logging Service (`loggingservice`)**
-  - Consumes log events from RabbitMQ.
-  - Writes logs to Elasticsearch.
-  - Data can be explored visually via Kibana.
+1. A client sends a message request (recipient, channel, body) to the **Task Router**
+2. The router hashes the payload, checks for duplicates, and routes to the correct RabbitMQ queue
+3. The **Delivery Service** picks up the message and simulates delivery (email / SMS / WhatsApp)
+4. Both services emit structured logs to the **Logging Service**, which indexes them in Elasticsearch
+5. Everything is visible in **Kibana**
 
-### Repository Layout
+---
 
-- **`taskRouter/`** – Task routing service (Spring Boot, MongoDB, RabbitMQ).
-- **`delivery/`** – Delivery service (Spring Boot, MongoDB, RabbitMQ).
-- **`loggingservice/`** – Logging service (Spring Boot, Elasticsearch, RabbitMQ).
-- **`docker-compose.yml`** – Local dev stack: MongoDB, RabbitMQ, Elasticsearch, Kibana, and all three services.
+## Architecture
 
-Each service has its own `pom.xml`, `src/main/java`, and `src/main/resources/application.yml`.
+```
+Client
+  │
+  ▼
+Task Router (REST API)
+  ├── Deduplication (hash → MongoDB)
+  ├── Persistence (MongoDB)
+  └── Routes to RabbitMQ
+        ├── email-queue   →  Delivery Service
+        ├── sms-queue     →  Delivery Service
+        └── whatsapp-queue → Delivery Service
 
-## Running Everything with Docker
+Task Router + Delivery Service
+  └── Publishes logs → logs-queue → Logging Service → Elasticsearch → Kibana
+```
 
-### Prerequisites
+---
 
-- **Docker** and **Docker Compose** installed and running.
+## Tech Stack
 
-### 1. Build and Start the Stack
+| Concern | Technology |
+|---|---|
+| Services | Java, Spring Boot |
+| Messaging | RabbitMQ |
+| Persistence | MongoDB |
+| Observability | Elasticsearch + Kibana |
+| Containerisation | Docker Compose |
 
-From the project root (where `docker-compose.yml` lives):
+---
+
+## Key Design Decisions
+
+- **Duplicate suppression** — payloads are SHA-hashed before routing; identical messages are rejected with a `DUPLICATE_SUPPRESSED` response, preventing double-delivery without a distributed lock
+- **Async delivery** — channel queues decouple routing from delivery, so a slow SMS provider doesn't block email throughput
+- **Centralised logging** — all services emit structured log events to a shared RabbitMQ exchange, consumed by a dedicated logging service and indexed in Elasticsearch
+
+---
+
+## Running Locally
+
+**Prerequisites:** Docker and Docker Compose
 
 ```bash
+# Start the full stack (builds images + spins up all services)
 docker compose up --build
-```
 
-This will:
-
-- Build Docker images for `taskRouter`, `delivery`, and `loggingservice`.
-- Start MongoDB, RabbitMQ, Elasticsearch, Kibana, and all three services.
-
-To stop everything:
-
-```bash
+# Stop
 docker compose down
-```
 
-Volumes (`mongo_data`, `es_data`) will persist data between runs. To wipe all data:
-
-```bash
+# Stop and wipe persisted data
 docker compose down -v
 ```
 
-## Service URLs
+### Service URLs
 
-- **Task Router API**: `http://localhost:8080/tasks/route`
-- **RabbitMQ Management UI**: `http://localhost:15672` (user: `guest`, pass: `guest`)
-- **MongoDB**: `localhost:27017` (DB: `taskRouteApplication`)
-- **Elasticsearch**: `http://localhost:9200`
-- **Kibana**: `http://localhost:5601`
+| Service | URL |
+|---|---|
+| Task Router API | `http://localhost:8080/tasks/route` |
+| RabbitMQ Management | `http://localhost:15672` (guest / guest) |
+| MongoDB | `localhost:27017` |
+| Elasticsearch | `http://localhost:9200` |
+| Kibana | `http://localhost:5601` |
 
-## Example API Usage (Task Router)
+---
 
-- **Endpoint**: `POST http://localhost:8080/tasks/route`
-- **Sample Request Body**:
+## API Reference
+
+### Route a Message
+
+`POST http://localhost:8080/tasks/route`
 
 ```json
 {
@@ -82,45 +97,52 @@ docker compose down -v
 }
 ```
 
-- **Sample Success Response**:
-
+**Success**
 ```json
 {
-  "details": "Forwarded to Email Service",
-  "duplicate": false,
   "status": "ROUTED",
+  "duplicate": false,
+  "details": "Forwarded to Email Service",
   "traceId": "eea78425-5acd-45b7-a72a-0a435ae4ece0"
 }
 ```
 
-- **Sample Duplicate Response**:
-
+**Duplicate detected**
 ```json
 {
   "status": "DUPLICATE_SUPPRESSED",
   "duplicate": true,
-  "traceId": "eea78425-5acd-45b7-a72a-0a435ae4ece0",
-  "details": "Message with identical channel, recipient, and body already processed."
+  "details": "Message with identical channel, recipient, and body already processed.",
+  "traceId": "eea78425-5acd-45b7-a72a-0a435ae4ece0"
 }
 ```
 
+---
+
 ## Observability with Kibana
 
-1. Ensure the stack is running (`docker compose up --build`).
-2. Open Kibana in a browser: `http://localhost:5601`.
-3. Go to **Discover**.
-4. Create an index pattern, for example:
-   - **`logs-*`** (or whatever index name pattern is configured in the logging service).
-5. Explore logs coming from:
-   - **Task Router**
-   - **Delivery Service**
-   - **Logging Service**
+1. Start the stack: `docker compose up --build`
+2. Open Kibana: `http://localhost:5601`
+3. Go to **Discover** → create an index pattern (`logs-*`)
+4. Explore structured logs from all three services in real time
 
-## What This Project Demonstrates
+---
 
-- **Microservices architecture** using Spring Boot.
-- **Asynchronous communication** with RabbitMQ.
-- **MongoDB persistence** for messages and delivery records.
-- **Duplicate message detection** via hashing.
-- **Centralized logging** with Elasticsearch and **visualization** in Kibana.
-- **Containerized local environment** using Docker Compose for easy spin‑up and teardown.
+## Repository Structure
+
+```
+taskRouter/       — REST API, deduplication, RabbitMQ routing (Spring Boot)
+delivery/         — Channel delivery simulation + persistence (Spring Boot)
+loggingservice/   — Log consumer → Elasticsearch indexer (Spring Boot)
+docker-compose.yml
+```
+
+---
+
+## What This Demonstrates
+
+- Microservices architecture with clear service boundaries
+- Asynchronous inter-service communication via RabbitMQ
+- Idempotent message handling through hash-based deduplication
+- Centralised, structured observability with ELK stack
+- One-command local environment via Docker Compose
